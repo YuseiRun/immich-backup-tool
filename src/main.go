@@ -9,13 +9,14 @@ import (
 	"net/http"
 	"bytes"
 	"time"
+	"encoding/json"
 	//	"strings"
 )
 
 
-type Config struct{
-	immichUrl string `json:"immichUrl"`,
-	immichApiKey string `json:"immichApiKey`
+type Config struct {
+	ImmichUrl string `json:"immichUrl"`
+	ImmichApiKey string `json:"immichApiKey`
 }
 
 
@@ -73,26 +74,34 @@ func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
 
 func getImmichPhotos(syncDate time.Time){
 	
-	config, err := os.ReadFile("config.json")
+	configJson, err := os.ReadFile("config.json")
 
-	if err != nill{
+	if err != nil{
+		fmt.Sprintf("Error finding config")
+		return
+	}
+	var config Config
+	err = json.Unmarshal(configJson, &config)
+	
+	if err != nil{
 		fmt.Sprintf("Error reading config")
 		return
 	}
 
 
+	fmt.Sprintf("opened file")
 	fmt.Println(syncDate.Unix())
 	//"updatedAfter" :  LAST_SYNC_DATE
 	// "take" : X
 	body := `{"updatedAfter": "", "take": 250}`
 	//https://api.immich.app/endpoints/search/searchAssets
-	req, err := http.NewRequest("POST",config.immichUrl + "/search/metadata",bytes.NewBufferString(body))
+	req, err := http.NewRequest("POST", config.ImmichUrl + "/search/metadata",bytes.NewBufferString(body))
 	if err != nil {
 		fmt.Sprintf("failed to contact to immich server")
 		os.Exit(1)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key","KEY")	
+	req.Header.Set("x-api-key", config.ImmichApiKey)	
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
