@@ -10,18 +10,40 @@ import (
 	"bytes"
 	"time"
 	"encoding/json"
+	"errors"
 	//	"strings"
 )
 
 
 type Config struct {
 	ImmichUrl string `json:"immichUrl"`
-	ImmichApiKey string `json:"immichApiKey`
+	ImmichApiKey string `json:"immichApiKey"`
 }
 
+type AssetResponseDto struct {
+	id string `json:"id"`
+}
+
+type SearchAssetResponseDto struct {
+    assets []AssetResponseDto `json:"AssetResponseDto"`
+    Total  int     `json:"total"`
+    Page   int     `json:"page"`
+    Size   int     `json:"size"`
+}
 
 func main (){
 
+
+
+	//TODO: all the comments below
+	//TODO: Separate functions into proper
+
+
+	config, err := getConfigJson()
+
+	if(err != nil){
+		fmt.Sprintf("failed to get config in getImmichPhotos()")
+	}
 
 	fmt.Sprintf("started")
 	const dbPath =  "../db/database.db";
@@ -52,16 +74,20 @@ func main (){
 	cnxDb(db, sqlLastSyncDB, "lastSync")
 	cnxDb(db, sqlImageNameDB, "image")
 
-	//_, err = db.Exec(sqlImageNameDB)
+	//get newest entry in db date sync
+	//lastSyncData, err := getLastSyncDate()
+	
+	//send last sync date here\
+	//while lastSyncDate<currentDate loop the following
+	getImmichPhotosAssetIds(config, time.Now())
+	//downloadImmichAssets
+	//
 
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//log.Println("image table connection success")
-
-	getImmichPhotos(time.Now())
 
 }
+
+//func downloadImmichAssets(assets )
+
 func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
 	_, err := db.Exec(sqlStr)
 
@@ -72,47 +98,81 @@ func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
 
 }
 
-func getImmichPhotos(syncDate time.Time){
-	
+func jsonToType[T any](jsonByte[]byte, returnType *T) ( err error){
+	err = json.Unmarshal(jsonByte, returnType)
+	if err != nil{
+		fmt.Sprintf("Error reading json")
+		err = errors.New("Error reading json");
+		return
+	}
+	return 
+}
+
+func getConfigJson() (config Config, err error) {
 	configJson, err := os.ReadFile("config.json")
 
 	if err != nil{
 		fmt.Sprintf("Error finding config")
-		return
-	}
-	var config Config
-	err = json.Unmarshal(configJson, &config)
-	
-	if err != nil{
-		fmt.Sprintf("Error reading config")
+		err = errors.New("Error finding config");
 		return
 	}
 
+	jsonToType(configJson, &config)
+	return 
 
-	fmt.Sprintf("opened file")
-	fmt.Println(syncDate.Unix())
-	//"updatedAfter" :  LAST_SYNC_DATE
-	// "take" : X
-	body := `{"updatedAfter": "", "take": 250}`
+}
+
+
+
+func getImmichPhotosAssetIds(config Config, syncDate time.Time){
+
+
+	body := `
+	{
+		"updatedAfter": "`+ syncDate.Format("2006-01-02T15:04:05.000Z")+`", 
+		"updatedBefore":" `+ syncDate.AddDate(0,0,1).Format("2006-01-02T15:04:05.000Z") +`", 
+		"take": 250
+	}
+	`
+
+
 	//https://api.immich.app/endpoints/search/searchAssets
-	req, err := http.NewRequest("POST", config.ImmichUrl + "/search/metadata",bytes.NewBufferString(body))
+	immichSearchMetaDataUrl := config.ImmichUrl + "/search/metadata";
+	fmt.Println(immichSearchMetaDataUrl)
+	req, err := http.NewRequest("POST", immichSearchMetaDataUrl,bytes.NewBufferString(body))
 	if err != nil {
-		fmt.Sprintf("failed to contact to immich server")
+		log.Println("failed to create request to immich server")
 		os.Exit(1)
 	}
+
+	fmt.Println("Created Request")
+	
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("x-api-key", config.ImmichApiKey)	
 
+	
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		panic(err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Println("Response Code:", resp.StatusCode)
+		return
+	}
 
-
-
-
+	log.Println("sent request")
+	
+	
+	
+	var dto SearchAssetResponseDto
+	err = json.NewDecoder(resp.Body).Decode(&dto)
+	if err != nil {
+		log.Fatal("Could not contact immich server")
+	}
+	fmt.Println(dto.Total)
 
 }
 
