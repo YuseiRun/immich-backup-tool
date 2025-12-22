@@ -11,6 +11,7 @@ import (
 	"time"
 	"encoding/json"
 	"errors"
+//	u "github.com/YuseiRun/immich-backup-tool/src/utils"
 	//	"strings"
 )
 
@@ -20,15 +21,25 @@ type Config struct {
 	ImmichApiKey string `json:"immichApiKey"`
 }
 
-type AssetResponseDto struct {
-	id string `json:"id"`
+
+type Item struct {
+	Id string `json:"id"`
 }
 
+type AssetResponseDto struct {
+	
+	Total int     `json:"total"`
+	Count int     `json:"count"`
+	Items []Item  `json:"items"`
+	
+}
+
+
 type SearchAssetResponseDto struct {
-    assets []AssetResponseDto `json:"AssetResponseDto"`
-    Total  int     `json:"total"`
-    Page   int     `json:"page"`
-    Size   int     `json:"size"`
+    Assets AssetResponseDto `json:"assets"`
+    //Total  int     `json:"total"`
+    //Page   int     `json:"page"`
+    //Size   int     `json:"size"`
 }
 
 func main (){
@@ -129,16 +140,16 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time){
 
 	body := `
 	{
-		"updatedAfter": "`+ syncDate.Format("2006-01-02T15:04:05.000Z")+`", 
-		"updatedBefore":" `+ syncDate.AddDate(0,0,1).Format("2006-01-02T15:04:05.000Z") +`", 
-		"take": 250
+		"updatedAfter":"`+ syncDate.AddDate(0,0,-20).Format("2006-01-02T15:04:05.000Z")+`", 
+
+		"take":250
 	}
 	`
-
+//		"updatedBefore":"`+ syncDate.AddDate(0,0,0).Format("2006-01-02T15:04:05.000Z") +`", 
 
 	//https://api.immich.app/endpoints/search/searchAssets
 	immichSearchMetaDataUrl := config.ImmichUrl + "/search/metadata";
-	fmt.Println(immichSearchMetaDataUrl)
+//	fmt.Println(body + immichSearchMetaDataUrl)
 	req, err := http.NewRequest("POST", immichSearchMetaDataUrl,bytes.NewBufferString(body))
 	if err != nil {
 		log.Println("failed to create request to immich server")
@@ -172,7 +183,8 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time){
 	if err != nil {
 		log.Fatal("Could not contact immich server")
 	}
-	fmt.Println(dto.Total)
+	
+	fmt.Println(dto.Assets.Items[0].Id)//.Total)
 
 }
 
