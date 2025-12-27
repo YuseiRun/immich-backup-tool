@@ -1,4 +1,5 @@
 {
 	"immichUrl": "localhost",
-	"immichApiKey": "API_KEY"
+	"immichApiKey": "API_KEY",
+	"downloadLocation": "/NEEDS/FULL/PATH/Pictures/immichBackup"
 }

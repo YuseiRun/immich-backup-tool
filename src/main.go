@@ -11,14 +11,14 @@ import (
 	"time"
 	"encoding/json"
 	"errors"
-//	u "github.com/YuseiRun/immich-backup-tool/src/utils"
-	//	"strings"
+
 )
 
 
 type Config struct {
 	ImmichUrl string `json:"immichUrl"`
 	ImmichApiKey string `json:"immichApiKey"`
+	DownloadLoc string `json:"downloadLocation"`
 }
 
 
@@ -56,6 +56,7 @@ func main (){
 		fmt.Sprintf("failed to get config in getImmichPhotos()")
 	}
 
+
 	fmt.Sprintf("started")
 	const dbPath =  "../db/database.db";
 	fileExists(dbPath)
@@ -87,17 +88,30 @@ func main (){
 
 	//get newest entry in db date sync
 	//lastSyncData, err := getLastSyncDate()
-	
+	getDate:=time.Now()
 	//send last sync date here\
 	//while lastSyncDate<currentDate loop the following
-	getImmichPhotosAssetIds(config, time.Now())
-	//downloadImmichAssets
+	assetIds := getImmichPhotosAssetIds(config,getDate)
+	folderExists(config.DownloadLoc)
+	
+	downloadImmichAssets(config.DownloadLoc,getDate.Format("2006-01-02"),assetIds)
 	//
 
 
 }
 
-//func downloadImmichAssets(assets )
+func downloadImmichAssets(location string, date string, assets []string){
+	//need to get the download location
+	fmt.Println(date,location)
+	//create a new folder based on date provided
+	folderExists(location+"/"+date)
+	
+
+	//download all assets to the new folder
+
+
+	return
+}
 
 func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
 	_, err := db.Exec(sqlStr)
@@ -135,8 +149,9 @@ func getConfigJson() (config Config, err error) {
 
 
 
-func getImmichPhotosAssetIds(config Config, syncDate time.Time){
+func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []string){
 
+	//LIMITATIONS: can only get 250 per day, will need to implement paging support
 
 	body := `
 	{
@@ -183,9 +198,12 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time){
 	if err != nil {
 		log.Fatal("Could not contact immich server")
 	}
-	
+	var assetList []string
+	for i:=0; i< len(dto.Assets.Items); i++ {
+		assetList = append(assetList,dto.Assets.Items[i].Id);
+	}
 	fmt.Println(dto.Assets.Items[0].Id)//.Total)
-
+	return assetList
 }
 
 func fileExists(filePath string){
@@ -194,6 +212,16 @@ func fileExists(filePath string){
 		os.Create(filePath)
 	} else { 
 		fmt.Sprintf("File path: '" + filePath + "'exists!")
+	}
+	
+}
+func folderExists(folderPath string){
+	_, err := os.Stat(folderPath);
+	if err != nil {
+		fmt.Println("Creating path: " +folderPath)
+		os.MkdirAll(folderPath,0777)
+	} else { 
+		fmt.Println("Folder path: '" + folderPath + "'exists!")
 	}
 	
 }
