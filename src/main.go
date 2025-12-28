@@ -24,6 +24,7 @@ type Config struct {
 
 type Item struct {
 	Id string `json:"id"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type AssetResponseDto struct {
@@ -94,23 +95,68 @@ func main (){
 	assetIds := getImmichPhotosAssetIds(config,getDate)
 	folderExists(config.DownloadLoc)
 	
-	downloadImmichAssets(config.DownloadLoc,getDate.Format("2006-01-02"),assetIds)
+	downloadImmichAssets(config,assetIds)
 	//
 
 
 }
 
-func downloadImmichAssets(location string, date string, assets []string){
+func downloadImmichAssets(config Config, assets []Item){
 	//need to get the download location
-	fmt.Println(date,location)
+	fmt.Println(config.DownloadLoc)
 	//create a new folder based on date provided
-	folderExists(location+"/"+date)
-	
+	folderExists(config.DownloadLoc)
+	for i := 0; i < len(assets); i++{
+		folderExists(config.DownloadLoc + "/" +assets[i].CreatedAt.Format("2006-01-02"))
+		downloadAsset(config, assets[i])
+	}
 
 	//download all assets to the new folder
 
 
 	return
+}
+
+func downloadAsset(config Config, asset Item){
+	
+
+	//https://api.immich.app/endpoints/assets/downloadAsset
+	immichSearchMetaDataUrl := config.ImmichUrl + "/assets/"+asset.Id+"/original";
+//	fmt.Println(body + immichSearchMetaDataUrl)
+req, err := http.NewRequest("GET", immichSearchMetaDataUrl, nil)
+	if err != nil {
+		log.Println("failed to create request to immich server")
+		os.Exit(1)
+	}
+
+	fmt.Println("Created Request")
+	
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("x-api-key", config.ImmichApiKey)	
+
+	
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Println("Response Code:", resp.StatusCode)
+		return
+	}
+
+	log.Println("sent request")
+	
+	fmt.Println(resp)
+	
+	//var dto SearchAssetResponseDto
+	//err = json.NewDecoder(resp.Body).Decode(&dto)
+	//if err != nil {
+	//	log.Fatal("Could not contact immich server")
+	//}
+	
 }
 
 func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
@@ -149,7 +195,7 @@ func getConfigJson() (config Config, err error) {
 
 
 
-func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []string){
+func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
 
 	//LIMITATIONS: can only get 250 per day, will need to implement paging support
 
@@ -198,12 +244,12 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []string){
 	if err != nil {
 		log.Fatal("Could not contact immich server")
 	}
-	var assetList []string
-	for i:=0; i< len(dto.Assets.Items); i++ {
-		assetList = append(assetList,dto.Assets.Items[i].Id);
-	}
+	//	var assetList []string
+	//for i:=0; i< len(dto.Assets.Items); i++ {
+//		assetList = append(assetList,dto.Assets.Items[i].Id);
+//	}
 	fmt.Println(dto.Assets.Items[0].Id)//.Total)
-	return assetList
+	return dto.Assets.Items
 }
 
 func fileExists(filePath string){
