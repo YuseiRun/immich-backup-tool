@@ -11,7 +11,9 @@ import (
 	"time"
 	"encoding/json"
 	"errors"
-
+	"strings"
+	"regexp"
+	"io"
 )
 
 
@@ -103,7 +105,7 @@ func main (){
 
 func downloadImmichAssets(config Config, assets []Item){
 	//need to get the download location
-	fmt.Println(config.DownloadLoc)
+	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
 	folderExists(config.DownloadLoc)
 	for i := 0; i < len(assets); i++{
@@ -119,17 +121,16 @@ func downloadImmichAssets(config Config, assets []Item){
 
 func downloadAsset(config Config, asset Item){
 	
-
 	//https://api.immich.app/endpoints/assets/downloadAsset
 	immichSearchMetaDataUrl := config.ImmichUrl + "/assets/"+asset.Id+"/original";
 //	fmt.Println(body + immichSearchMetaDataUrl)
-req, err := http.NewRequest("GET", immichSearchMetaDataUrl, nil)
+	req, err := http.NewRequest("GET", immichSearchMetaDataUrl, nil)
 	if err != nil {
 		log.Println("failed to create request to immich server")
 		os.Exit(1)
 	}
 
-	fmt.Println("Created Request")
+	log.Println("Created Request")
 	
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -143,20 +144,39 @@ req, err := http.NewRequest("GET", immichSearchMetaDataUrl, nil)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		fmt.Println("Response Code:", resp.StatusCode)
+		log.Println("Response Code:", resp.StatusCode)
 		return
 	}
 
 	log.Println("sent request")
 	
-	fmt.Println(resp)
+	contentDisposition := resp.Header.Get("Content-Disposition")
+	filename := config.DownloadLoc+"/"+ asset.CreatedAt.Format("2006-01-02")+"/fileName-"+time.Now().Format("2006-01-02-15:04:05")+".JPG";
+	re := regexp.MustCompile(`^.*'`)
+	if strings.Contains(contentDisposition, "filename*=") {
+		parts:= strings.Split(contentDisposition, "filename*=")
+		if len(parts) >1 {
+			filename = config.DownloadLoc + "/" + asset.CreatedAt.Format("2006-01-02") + "/" + re.ReplaceAllString(strings.Join(parts,""),"")
+		}
+
+	}
+	log.Println(resp)
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Println("Could not create: " + filename)
+		return
+	}
+	defer file.Close()
+
+	_,err = io.Copy(file, resp.Body)
+
+	if err != nil {
+		fmt.Println("Could not copy to file: " + filename)
 	
-	//var dto SearchAssetResponseDto
-	//err = json.NewDecoder(resp.Body).Decode(&dto)
-	//if err != nil {
-	//	log.Fatal("Could not contact immich server")
-	//}
-	
+	}
+
+
+
 }
 
 func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
@@ -217,7 +237,7 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
 		os.Exit(1)
 	}
 
-	fmt.Println("Created Request")
+	log.Println("Created Request")
 	
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -231,7 +251,7 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		fmt.Println("Response Code:", resp.StatusCode)
+		log.Println("Response Code:", resp.StatusCode)
 		return
 	}
 
@@ -248,7 +268,8 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
 	//for i:=0; i< len(dto.Assets.Items); i++ {
 //		assetList = append(assetList,dto.Assets.Items[i].Id);
 //	}
-	fmt.Println(dto.Assets.Items[0].Id)//.Total)
+	
+	fmt.Println("Total Assets: ",  len(dto.Assets.Items))
 	return dto.Assets.Items
 }
 
@@ -257,17 +278,17 @@ func fileExists(filePath string){
 	if os.IsNotExist(err) {
 		os.Create(filePath)
 	} else { 
-		fmt.Sprintf("File path: '" + filePath + "'exists!")
+		log.Println("File path: '" + filePath + "'exists!")
 	}
 	
 }
 func folderExists(folderPath string){
 	_, err := os.Stat(folderPath);
 	if err != nil {
-		fmt.Println("Creating path: " +folderPath)
+		log.Println("Creating path: " +folderPath)
 		os.MkdirAll(folderPath,0777)
 	} else { 
-		fmt.Println("Folder path: '" + folderPath + "'exists!")
+		log.Println("Folder path: '" + folderPath + "'exists!")
 	}
 	
 }
