@@ -18,33 +18,31 @@ import (
 
 
 type Config struct {
-	ImmichUrl string `json:"immichUrl"`
+	ImmichUrl    string `json:"immichUrl"`
 	ImmichApiKey string `json:"immichApiKey"`
-	DownloadLoc string `json:"downloadLocation"`
+	DownloadLoc  string `json:"downloadLocation"`
 }
 
 
 type Item struct {
-	Id string `json:"id"`
-	CreatedAt time.Time `json:"createdAt"`
+	Id               string    `json:"id"`
+	OriginalFileName string    `json:"originalFileName"`
+	LocalDateTime    time.Time `json:"localDateTime"`
 }
-
-type AssetResponseDto struct {
-	
-	Total int     `json:"total"`
-	Count int     `json:"count"`
-	Items []Item  `json:"items"`
-	
-}
-
 
 type SearchAssetResponseDto struct {
-    Assets AssetResponseDto `json:"assets"`
-    //Total  int     `json:"total"`
-    //Page   int     `json:"page"`
-    //Size   int     `json:"size"`
+	Count     int     `json:"count"`
+    	NextPage  string  `json:"nextPage"`
+	Total     int     `json:"total"`
+	Items     []Item  `json:"items"`
+	
 }
 
+
+type MetaDataResponseDto struct {
+    Assets    SearchAssetResponseDto `json:"assets"`
+    Total     int              `json:"total"`
+} 
 func main (){
 
 
@@ -94,11 +92,14 @@ func main (){
 	getDate:=time.Now()
 	//send last sync date here\
 	//while lastSyncDate<currentDate loop the following
-	assetIds := getImmichPhotosAssetIds(config,getDate)
+	pageNum :="1"
+	assetIds := getImmichPhotosAssetIds(config,getDate,pageNum)
+	
+	fmt.Println(len(assetIds))
 	folderExists(config.DownloadLoc)
 	
 	downloadImmichAssets(config,assetIds)
-	//
+	log.Println("Downloads Complete!")	
 
 
 }
@@ -108,8 +109,11 @@ func downloadImmichAssets(config Config, assets []Item){
 	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
 	folderExists(config.DownloadLoc)
+	if(len(assets)<1){
+		return
+	}
 	for i := 0; i < len(assets); i++{
-		folderExists(config.DownloadLoc + "/" +assets[i].CreatedAt.Format("2006-01-02"))
+		folderExists(config.DownloadLoc + "/" +assets[i].LocalDateTime.Format("2006-01-02"))
 		downloadAsset(config, assets[i])
 	}
 
@@ -120,7 +124,12 @@ func downloadImmichAssets(config Config, assets []Item){
 }
 
 func downloadAsset(config Config, asset Item){
+	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
+	if(fileExists(filename)){
+		log.Println("File exists at: " +filename)
+		return
+	}	
 	//https://api.immich.app/endpoints/assets/downloadAsset
 	immichSearchMetaDataUrl := config.ImmichUrl + "/assets/"+asset.Id+"/original";
 //	fmt.Println(body + immichSearchMetaDataUrl)
@@ -151,16 +160,20 @@ func downloadAsset(config Config, asset Item){
 	log.Println("sent request")
 	
 	contentDisposition := resp.Header.Get("Content-Disposition")
-	filename := config.DownloadLoc+"/"+ asset.CreatedAt.Format("2006-01-02")+"/fileName-"+time.Now().Format("2006-01-02-15:04:05")+".JPG";
+	//filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/fileName-"+time.Now().Format("2006-01-02-15:04:05")+".JPG";
 	re := regexp.MustCompile(`^.*'`)
 	if strings.Contains(contentDisposition, "filename*=") {
 		parts:= strings.Split(contentDisposition, "filename*=")
 		if len(parts) >1 {
-			filename = config.DownloadLoc + "/" + asset.CreatedAt.Format("2006-01-02") + "/" + re.ReplaceAllString(strings.Join(parts,""),"")
+			filename = config.DownloadLoc + "/" + asset.LocalDateTime.Format("2006-01-02") + "/" + re.ReplaceAllString(strings.Join(parts,""),"")
 		}
 
 	}
-	log.Println(resp)
+	//log.Println(resp)
+	//if(fileExists(filename)){
+	//	log.Println("File exists at: " +filename)
+	//	return
+	//}
 	file, err := os.Create(filename)
 	if err != nil {
 		fmt.Println("Could not create: " + filename)
@@ -215,18 +228,18 @@ func getConfigJson() (config Config, err error) {
 
 
 
-func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
+func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(l []Item){
 
-	//LIMITATIONS: can only get 250 per day, will need to implement paging support
 
 	body := `
 	{
-		"updatedAfter":"`+ syncDate.AddDate(0,0,-20).Format("2006-01-02T15:04:05.000Z")+`", 
-
-		"take":250
+		"updatedAfter":"`+ syncDate.AddDate(0,0,-28).Format("2006-01-02T15:04:05.000Z")+`" 
+		,"page":`+ pageNum +`	
 	}
 	`
 //		"updatedBefore":"`+ syncDate.AddDate(0,0,0).Format("2006-01-02T15:04:05.000Z") +`", 
+
+//		"take":250
 
 	//https://api.immich.app/endpoints/search/searchAssets
 	immichSearchMetaDataUrl := config.ImmichUrl + "/search/metadata";
@@ -259,7 +272,7 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
 	
 	
 	
-	var dto SearchAssetResponseDto
+	var dto MetaDataResponseDto
 	err = json.NewDecoder(resp.Body).Decode(&dto)
 	if err != nil {
 		log.Fatal("Could not contact immich server")
@@ -269,16 +282,26 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time)(l []Item){
 //		assetList = append(assetList,dto.Assets.Items[i].Id);
 //	}
 	
-	fmt.Println("Total Assets: ",  len(dto.Assets.Items))
-	return dto.Assets.Items
+	fmt.Println("Total Count: ", dto.Assets.Count)
+	fmt.Println("Total Assets: ", dto.Assets.Total)
+	fmt.Println("Nextpage: ",  dto.Assets.NextPage)
+	items := dto.Assets.Items
+	if (dto.Assets.NextPage != "") {
+		items = append(items,getImmichPhotosAssetIds(config, syncDate, dto.Assets.NextPage)...)
+
+	}
+
+	return items
 }
 
-func fileExists(filePath string){
+func fileExists(filePath string) bool{
 	_, err := os.Stat(filePath);
 	if os.IsNotExist(err) {
 		os.Create(filePath)
+		return false
 	} else { 
 		log.Println("File path: '" + filePath + "'exists!")
+		return true
 	}
 	
 }
