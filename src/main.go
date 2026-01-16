@@ -15,6 +15,9 @@ import (
 	"regexp"
 	"io"
 	"sync"
+	"context"
+ 	"golang.org/x/sync/semaphore"
+	//"github.com/gosuri/uilive"
 )
 
 
@@ -63,8 +66,13 @@ func main (){
 		log.Println(err)
 		return
 	}
-	fmt.Sprintf("started")
-	const dbPath =  "../db/database.db";
+
+	log.Println("started")
+	dbPath :=  "../db";
+	
+	folderExists(dbPath)
+
+	dbPath += "/database.db"
 	fileExists(dbPath)
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil{
@@ -117,16 +125,28 @@ func downloadImmichAssets(config Config, assets []Item){
 	folderExists(config.DownloadLoc)
 	
 	var wg sync.WaitGroup
-	//sem := make(chan struct, config.Concurrent)
+	//guard:= make(chan struct {}, config.Concurrent)
+	sem := semaphore.NewWeighted(int64(config.Concurrent))//make(chan struct, config.Concurrent)
 
 	if(len(assets)<1){
 		return
 	}
 	for i := 0; i < len(assets); i++{
 		folderExists(config.DownloadLoc + "/" +assets[i].LocalDateTime.Format("2006-01-02"))
-		wg.Add(1)	
-		go downloadAsset(config, assets[i], &wg)
-	}
+		//guard <-struct{}{}
+		wg.Add(1)
+		
+		go func(a Item){
+			defer func(){ 
+				//<-guard
+				defer wg.Done()
+				ctx := context.Background()
+				sem.Acquire(ctx,1)
+				defer sem.Release(1)
+		 		downloadAsset(config, a,i,len(assets), &wg)
+			}()
+		}(assets[i])
+	 }
 
 	//download all assets to the new folder
 	wg.Wait()
@@ -134,11 +154,10 @@ func downloadImmichAssets(config Config, assets []Item){
 	return
 }
 
-func downloadAsset(config Config, asset Item, wg *sync.WaitGroup){ //sem chan struct{}, 
+func downloadAsset(config Config, asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
 	defer wg.Done() //making sure we close the sync
-	//sem <- struct{}{} //obtain semiphore
-	//def func() {<-sem}() //close semiphore
-	
+		
+	fmt.Printf("\rDownloading file number: %d/%d", count, total)
 	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
 	if(fileExists(filename)){
@@ -147,15 +166,14 @@ func downloadAsset(config Config, asset Item, wg *sync.WaitGroup){ //sem chan st
 	}	
 	//https://api.immich.app/endpoints/assets/downloadAsset
 	immichSearchMetaDataUrl := config.ImmichUrl + "/assets/"+asset.Id+"/original";
-//	fmt.Println(body + immichSearchMetaDataUrl)
+	
 	req, err := http.NewRequest("GET", immichSearchMetaDataUrl, nil)
 	if err != nil {
 		log.Println("failed to create request to immich server")
 		os.Exit(1)
 	}
 
-	log.Println("Created Request")
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("x-api-key", config.ImmichApiKey)	
@@ -172,8 +190,7 @@ func downloadAsset(config Config, asset Item, wg *sync.WaitGroup){ //sem chan st
 		return
 	}
 
-	log.Println("sent request")
-	
+
 	contentDisposition := resp.Header.Get("Content-Disposition")
 	//filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/fileName-"+time.Now().Format("2006-01-02-15:04:05")+".JPG";
 	re := regexp.MustCompile(`^.*'`)
@@ -184,11 +201,8 @@ func downloadAsset(config Config, asset Item, wg *sync.WaitGroup){ //sem chan st
 		}
 
 	}
-	//log.Println(resp)
-	//if(fileExists(filename)){
-	//	log.Println("File exists at: " +filename)
-	//	return
-	//}
+	
+
 	file, err := os.Create(filename)
 	if err != nil {
 		fmt.Println("Could not create: " + filename)
@@ -202,8 +216,6 @@ func downloadAsset(config Config, asset Item, wg *sync.WaitGroup){ //sem chan st
 		fmt.Println("Could not copy to file: " + filename)
 	
 	}
-
-
 
 }
 
@@ -261,7 +273,7 @@ func verifyConfig(config Config) (int, error){
 	} 
 	 
 	if( len(errStr) > 55){
-		return 0, errors.New(errStr[:len(errStr)-3]) //remove the last 2 chars
+		return 0, errors.New(errStr[:len(errStr)-2]) //remove the last 2 chars
 	}
 	return 1, nil 
 }
@@ -315,14 +327,10 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 	if err != nil {
 		log.Fatal("Could not contact immich server")
 	}
-	//	var assetList []string
-	//for i:=0; i< len(dto.Assets.Items); i++ {
-//		assetList = append(assetList,dto.Assets.Items[i].Id);
-//	}
-	
-	fmt.Println("Total Count: ", dto.Assets.Count)
-	fmt.Println("Total Assets: ", dto.Assets.Total)
-	fmt.Println("Nextpage: ",  dto.Assets.NextPage)
+
+	//fmt.Println("Total Count: ", dto.Assets.Count)
+	//fmt.Println("Total Assets: ", dto.Assets.Total)
+	//fmt.Println("Nextpage: ",  dto.Assets.NextPage)
 	items := dto.Assets.Items
 	if (dto.Assets.NextPage != "") {
 		items = append(items,getImmichPhotosAssetIds(config, syncDate, dto.Assets.NextPage)...)
@@ -335,7 +343,13 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 func fileExists(filePath string) bool{
 	_, err := os.Stat(filePath);
 	if os.IsNotExist(err) {
-		os.Create(filePath)
+
+		file,err :=os.Create(filePath)
+		if(err == nil){
+			return false
+		}
+
+		defer file.Close()
 		return false
 	} else { 
 		log.Println("File path: '" + filePath + "'exists!")
@@ -346,10 +360,6 @@ func fileExists(filePath string) bool{
 func folderExists(folderPath string){
 	_, err := os.Stat(folderPath);
 	if err != nil {
-		log.Println("Creating path: " +folderPath)
 		os.MkdirAll(folderPath,0777)
-	} else { 
-		log.Println("Folder path: '" + folderPath + "'exists!")
 	}
-	
 }
