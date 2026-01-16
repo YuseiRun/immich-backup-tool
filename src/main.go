@@ -14,13 +14,15 @@ import (
 	"strings"
 	"regexp"
 	"io"
+	"sync"
 )
 
 
 type Config struct {
-	ImmichUrl    string `json:"immichUrl"`
-	ImmichApiKey string `json:"immichApiKey"`
-	DownloadLoc  string `json:"downloadLocation"`
+	ImmichUrl    	string `json:"immichUrl"`
+	ImmichApiKey 	string `json:"immichApiKey"`
+	DownloadLoc  	string `json:"downloadLocation"`
+	Concurrent    int    `json:"concurrentDownloads"`
 }
 
 
@@ -44,20 +46,23 @@ type MetaDataResponseDto struct {
     Total     int              `json:"total"`
 } 
 func main (){
-
-
-
 	//TODO: all the comments below
 	//TODO: Separate functions into proper
 
-
+	log.Println("Processing config")
 	config, err := getConfigJson()
 
 	if(err != nil){
 		fmt.Sprintf("failed to get config in getImmichPhotos()")
+		return
 	}
 
+	bo, err := verifyConfig(config)
 
+	if(bo ==0 || err != nil){
+		log.Println(err)
+		return
+	}
 	fmt.Sprintf("started")
 	const dbPath =  "../db/database.db";
 	fileExists(dbPath)
@@ -93,11 +98,12 @@ func main (){
 	//send last sync date here\
 	//while lastSyncDate<currentDate loop the following
 	pageNum :="1"
+	
 	assetIds := getImmichPhotosAssetIds(config,getDate,pageNum)
 	
 	fmt.Println(len(assetIds))
 	folderExists(config.DownloadLoc)
-	
+		
 	downloadImmichAssets(config,assetIds)
 	log.Println("Downloads Complete!")	
 
@@ -109,21 +115,30 @@ func downloadImmichAssets(config Config, assets []Item){
 	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
 	folderExists(config.DownloadLoc)
+	
+	var wg sync.WaitGroup
+	//sem := make(chan struct, config.Concurrent)
+
 	if(len(assets)<1){
 		return
 	}
 	for i := 0; i < len(assets); i++{
 		folderExists(config.DownloadLoc + "/" +assets[i].LocalDateTime.Format("2006-01-02"))
-		downloadAsset(config, assets[i])
+		wg.Add(1)	
+		go downloadAsset(config, assets[i], &wg)
 	}
 
 	//download all assets to the new folder
-
+	wg.Wait()
 
 	return
 }
 
-func downloadAsset(config Config, asset Item){
+func downloadAsset(config Config, asset Item, wg *sync.WaitGroup){ //sem chan struct{}, 
+	defer wg.Done() //making sure we close the sync
+	//sem <- struct{}{} //obtain semiphore
+	//def func() {<-sem}() //close semiphore
+	
 	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
 	if(fileExists(filename)){
@@ -226,7 +241,30 @@ func getConfigJson() (config Config, err error) {
 
 }
 
-
+func verifyConfig(config Config) (int, error){
+	errStr := "Your config.json is missing the following values: "
+		
+	if (config.ImmichUrl == ""){
+		errStr += "immichUrl, "
+	}   
+	if( config.ImmichApiKey == ""){
+		errStr += "immichApiKey, "
+	} 
+	if( config.DownloadLoc == ""){
+		errStr += "downloadLocation, "
+	}
+	if(config.Concurrent == 0){
+		//if you're reading my code and wondering why I added the ", " at the end of the last string I have 2 reasons
+		//1. I may add more configs in the future
+		//2. I can just lop off the last 2 chars of this string without checking if this function was called
+		errStr += "concurrentDownloads, "
+	} 
+	 
+	if( len(errStr) > 55){
+		return 0, errors.New(errStr[:len(errStr)-3]) //remove the last 2 chars
+	}
+	return 1, nil 
+}
 
 func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(l []Item){
 
