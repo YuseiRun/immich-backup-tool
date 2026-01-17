@@ -114,19 +114,19 @@ func main (){
 	//while lastSyncDate<currentDate loop the following
 	pageNum :="1"
 	
+	folderExists(config.DownloadLoc)
 	assetIds := getImmichPhotosAssetIds(config,getDate,pageNum)
 	
 	fmt.Println(len(assetIds))
-	folderExists(config.DownloadLoc)
 		
-	downloadImmichAssets(config,assetIds)
+	//downloadImmichAssets(config,assetIds)
 	log.Println("Downloads Complete!")	
 
 
 
 }
 
-func downloadImmichAssets(config Config, assets []Item){
+func downloadImmichAssets(config Config, assets []Item, totalCount int){
 	//need to get the download location
 	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
@@ -151,7 +151,7 @@ func downloadImmichAssets(config Config, assets []Item){
 				ctx := context.Background()
 				sem.Acquire(ctx,1)
 				defer sem.Release(1)
-		 		downloadAsset(config, a,i,len(assets), &wg)
+		 		downloadAsset(config, a,i,totalCount, &wg)
 			}()
 		}(assets[i])
 	 }
@@ -309,6 +309,7 @@ func verifyConfig(config Config) (int, error){
 	return 1, nil 
 }
 
+
 func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(l []Item){
 
 	body := `
@@ -362,11 +363,13 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 	//fmt.Println("Total Assets: ", dto.Assets.Total)
 	//fmt.Println("Nextpage: ",  dto.Assets.NextPage)
 	items := dto.Assets.Items
+
+	downloadImmichAssets(config,items, dto.Assets.Total)
 	if (dto.Assets.NextPage != "") {
-		items = append(items,getImmichPhotosAssetIds(config, syncDate, dto.Assets.NextPage)...)
-
-	}
-
+		//items = append(items,
+		getImmichPhotosAssetIds(config, syncDate, dto.Assets.NextPage)
+		//...)
+	} 
 	return items
 }
 
