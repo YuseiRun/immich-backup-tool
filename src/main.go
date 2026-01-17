@@ -4,6 +4,7 @@ import (
  	_ "github.com/mattn/go-sqlite3"
 	"fmt"
 	"os"
+	"os/exec"
 	"log"
 	"database/sql"
 	"net/http"
@@ -50,7 +51,8 @@ type MetaDataResponseDto struct {
 } 
 func main (){
 	//TODO: all the comments below
-	//TODO: Separate functions into proper
+	//TODO: Separate functions into Processing
+	
 
 	log.Println("Processing config")
 	config, err := getConfigJson()
@@ -116,6 +118,7 @@ func main (){
 	log.Println("Downloads Complete!")	
 
 
+
 }
 
 func downloadImmichAssets(config Config, assets []Item){
@@ -161,7 +164,7 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
 	if(fileExists(filename)){
-		log.Println("File exists at: " +filename)
+		//log.Println("\r\nFile exists at: " +filename +"\n")
 		return
 	}	
 	//https://api.immich.app/endpoints/assets/downloadAsset
@@ -202,7 +205,9 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 
 	}
 	
-
+	//TODO: have a log/table of failed to download files. 
+	//want users to know what didnt download, the ability to redownload (auto? leaning towards yes)
+	//remove entries that were succesfully downloaded
 	file, err := os.Create(filename)
 	if err != nil {
 		fmt.Println("Could not create: " + filename)
@@ -215,9 +220,18 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 	if err != nil {
 		fmt.Println("Could not copy to file: " + filename)
 	
+	}	else {
+		updateDate(filename, asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
 	}
-
 }
+
+func updateDate(filename string, dateTaken string) error {//file *os.File, dateTaken string){
+		cmd := exec.Command("exiftool", "-SubSecDateTimeOriginal=" +dateTaken, "-overwrite_original", filename)
+		return cmd.Run()
+}
+ 
+
+
 
 func cnxDb(db *sql.DB, sqlStr string, sqlTableName string){
 	_, err := db.Exec(sqlStr)
@@ -279,7 +293,6 @@ func verifyConfig(config Config) (int, error){
 }
 
 func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(l []Item){
-
 
 	body := `
 	{
@@ -352,7 +365,7 @@ func fileExists(filePath string) bool{
 		defer file.Close()
 		return false
 	} else { 
-		log.Println("File path: '" + filePath + "'exists!")
+		log.Println("\nFile path: '" + filePath + "'exists!")
 		return true
 	}
 	
