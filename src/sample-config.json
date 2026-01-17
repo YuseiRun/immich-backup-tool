@@ -2,5 +2,6 @@
 	"immichUrl": "localhost",
 	"immichApiKey": "API_KEY",
 	"downloadLocation": "/NEEDS/FULL/PATH/Pictures/immichBackup",
-  "concurrentDownloads": 1
+  "concurrentDownloads": 1,
+  "maxDiskUsage": 80
 }

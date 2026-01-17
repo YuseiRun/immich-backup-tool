@@ -17,6 +17,7 @@ require (
 	github.com/gosuri/uilive v0.0.4 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/sfomuseum/go-exif-update v0.2.1 // indirect
+	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect

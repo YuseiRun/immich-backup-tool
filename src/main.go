@@ -18,15 +18,20 @@ import (
 	"sync"
 	"context"
  	"golang.org/x/sync/semaphore"
+	"github.com/shirou/gopsutil/disk"
+	//	"golang.org/x/sys/unix"
+	
+
 	//"github.com/gosuri/uilive"
 )
 
 
 type Config struct {
-	ImmichUrl    	string `json:"immichUrl"`
-	ImmichApiKey 	string `json:"immichApiKey"`
-	DownloadLoc  	string `json:"downloadLocation"`
-	Concurrent    int    `json:"concurrentDownloads"`
+	ImmichUrl    	string  `json:"immichUrl"`
+	ImmichApiKey 	string  `json:"immichApiKey"`
+	DownloadLoc  	string  `json:"downloadLocation"`
+	Concurrent    int     `json:"concurrentDownloads"`
+	MaxDiskUsage	float64 `json:"maxDiskUsage"`
 }
 
 
@@ -223,6 +228,15 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 	}	else {
 		updateDate(filename, asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
 	}
+	//TODO: want to check the root location of the DownloadLoc
+	//This so I am not checking the entirity of all of the drives connected
+	//re=regexp.MustCompile('^/([^/]+)')
+	usage, err := disk.Usage("/")// + re.FindStringSubmatch(config.DownloadLoc)[1])
+	if(usage.UsedPercent > float64(config.MaxDiskUsage) ) {
+		//TODO: investigate why error has !\n(MISSING)
+		error := fmt.Sprintf("TOO MUCH SPACE USED\n Please clean up your disk or increase limit to be > %g%\n\nNow Exiting Program", usage.UsedPercent)
+		log.Panic(error)
+	}	
 }
 
 func updateDate(filename string, dateTaken string) error {//file *os.File, dateTaken string){
@@ -276,6 +290,9 @@ func verifyConfig(config Config) (int, error){
 	if( config.ImmichApiKey == ""){
 		errStr += "immichApiKey, "
 	} 
+	if( config.MaxDiskUsage == 0.0){
+		errStr += "maxDiskUsage, "
+	}
 	if( config.DownloadLoc == ""){
 		errStr += "downloadLocation, "
 	}
@@ -365,7 +382,7 @@ func fileExists(filePath string) bool{
 		defer file.Close()
 		return false
 	} else { 
-		log.Println("\nFile path: '" + filePath + "'exists!")
+		log.Println("\r\nFile path: '" + filePath + "'exists!\n")
 		return true
 	}
 	
