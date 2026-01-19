@@ -39,11 +39,12 @@ type Item struct {
 	Id               string    `json:"id"`
 	OriginalFileName string    `json:"originalFileName"`
 	LocalDateTime    time.Time `json:"localDateTime"`
+	UpdatedAt				 time.Time `json:"updatedAt"`
 }
 
 type SearchAssetResponseDto struct {
 	Count     int     `json:"count"`
-    	NextPage  string  `json:"nextPage"`
+  NextPage  string  `json:"nextPage"`
 	Total     int     `json:"total"`
 	Items     []Item  `json:"items"`
 	
@@ -53,17 +54,19 @@ type SearchAssetResponseDto struct {
 type MetaDataResponseDto struct {
     Assets    SearchAssetResponseDto `json:"assets"`
     Total     int              `json:"total"`
-} 
+}
+
+var db *sql.DB
+
 func main (){
 	//TODO: all the comments below
 	//TODO: Separate functions into Processing
 	
 
-	log.Println("Processing config")
 	config, err := getConfigJson()
 
 	if(err != nil){
-		fmt.Sprintf("failed to get config in getImmichPhotos()")
+		log.Println("failed to get config in getImmichPhotos()")
 		return
 	}
 
@@ -81,10 +84,14 @@ func main (){
 
 	dbPath += "/database.db"
 	fileExists(dbPath)
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil{
-		log.Fatal(err)
+	db, err = sql.Open("sqlite3", dbPath)
+	if err != nil {
+	    log.Fatal(err)
 	}
+	if err := db.Ping(); err != nil {
+	    log.Fatal(err)
+	}
+	
 
 	defer db.Close()
 	
@@ -93,30 +100,36 @@ func main (){
 		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		lastSyncDtm Date,
 		success String,
-		totalSync int 
+		totalSync INTEGER
 	);
 	`
 
-	sqlImageNameDB :=` 
-	CREATE TABLE IF NOT EXISTS images (
-		id INTEGER NOT NULL PRIMARY KEY,
-		imageName VARCHAR(127),
-		FOREIGN KEY (id) REFERENCES lastSync(id)
+	failedToDownloadTable :=` 
+	CREATE TABLE IF NOT EXISTS failedAssets (
+		assetId VARCHAR(127) NOT NULL,
+		success INTEGER NOT NULL DEFAULT 0
 	);
 	`
+//
+//		id INTEGER NOT NULL PRIMARY KEY,
+//	FOREIGN KEY (id) REFERENCES lastSync(id)
+	
+	
 	cnxDb(db, sqlLastSyncDB, "lastSync")
-	cnxDb(db, sqlImageNameDB, "image")
+	cnxDb(db, failedToDownloadTable, "failedAssets")
 
 	//get newest entry in db date sync
-	//lastSyncData, err := getLastSyncDate()
-	getDate:=time.Now()
+	getDate := getLastSyncDate()
+	//getDate=time.Now()
 	//send last sync date here\
 	//while lastSyncDate<currentDate loop the following
 	pageNum :="1"
 	
 	folderExists(config.DownloadLoc)
 	assetIds := getImmichPhotosAssetIds(config,getDate,pageNum)
-	
+	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
+	_, err = db.Exec(lastSyncInsertSQL, time.Now(), "SUCCESS", -1 )
+		
 	fmt.Println(len(assetIds))
 		
 	//downloadImmichAssets(config,assetIds)
@@ -126,7 +139,25 @@ func main (){
 
 }
 
-func downloadImmichAssets(config Config, assets []Item, totalCount int){
+func getLastSyncDate()(time.Time){
+	var lsDate time.Time
+	lastSyncDateSQL := "SELECT lastSyncDtm from lastSync ORDER BY lastSyncDtm DESC LIMIT 1"
+	err := db.QueryRow(lastSyncDateSQL).Scan(&lsDate)
+	if err 	!= nil {
+		log.Println(err)
+		//if err == sql.ErrNoRows{
+			log.Println("Setting first date as 1/1/1970")
+			lsDate = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+		//}	else {
+		//	log.Panic("Error in retrieving rows")
+		//}
+	} else {
+		fmt.Printf("Last Date Sync was: %s\n", lsDate.Format("2006-01-02 15:04:05"))
+	}
+	return lsDate
+}
+
+func downloadImmichAssets(config Config, assets []Item, totalCount int) {
 	//need to get the download location
 	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
@@ -137,7 +168,7 @@ func downloadImmichAssets(config Config, assets []Item, totalCount int){
 	sem := semaphore.NewWeighted(int64(config.Concurrent))//make(chan struct, config.Concurrent)
 
 	if(len(assets)<1){
-		return
+		return 
 	}
 	for i := 0; i < len(assets); i++{
 		folderExists(config.DownloadLoc + "/" +assets[i].LocalDateTime.Format("2006-01-02"))
@@ -147,7 +178,7 @@ func downloadImmichAssets(config Config, assets []Item, totalCount int){
 		go func(a Item){
 			defer func(){ 
 				//<-guard
-				defer wg.Done()
+				//defer wg.Done()
 				ctx := context.Background()
 				sem.Acquire(ctx,1)
 				defer sem.Release(1)
@@ -159,7 +190,7 @@ func downloadImmichAssets(config Config, assets []Item, totalCount int){
 	//download all assets to the new folder
 	wg.Wait()
 
-	return
+	return 
 }
 
 func downloadAsset(config Config, asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
@@ -224,7 +255,11 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 
 	if err != nil {
 		fmt.Println("Could not copy to file: " + filename)
-	
+		failedAssetsSQL := "INSERT into failedAssets(assetId) values (?)"
+		_, err := db.Exec(failedAssetsSQL, asset.Id)
+		if err != nil {
+			log.Println("Could not record that %s was failed to download", asset.Id)
+		}
 	}	else {
 		updateDate(filename, asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
 	}
@@ -277,7 +312,7 @@ func getConfigJson() (config Config, err error) {
 	}
 
 	jsonToType(configJson, &config)
-	return 
+	return config, err 
 
 }
 
@@ -314,8 +349,9 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 
 	body := `
 	{
-		"updatedAfter":"`+ syncDate.AddDate(0,0,-28).Format("2006-01-02T15:04:05.000Z")+`" 
-		,"page":`+ pageNum +`	
+		"updatedAfter":"`+ syncDate.Format("2006-01-02T15:04:05.000Z")+`" 
+		,"page":`+ pageNum +`
+		,"order":"asc"
 	}
 	`
 //		"updatedBefore":"`+ syncDate.AddDate(0,0,0).Format("2006-01-02T15:04:05.000Z") +`", 
@@ -331,7 +367,7 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 		os.Exit(1)
 	}
 
-	log.Println("Created Request")
+	//log.Println("Created Request")
 	
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -349,10 +385,6 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 		return
 	}
 
-	log.Println("sent request")
-	
-	
-	
 	var dto MetaDataResponseDto
 	err = json.NewDecoder(resp.Body).Decode(&dto)
 	if err != nil {
@@ -364,7 +396,22 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 	//fmt.Println("Nextpage: ",  dto.Assets.NextPage)
 	items := dto.Assets.Items
 
+	if len(items) == 0 {
+		return
+	}
+	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
+	_, err = db.Exec(lastSyncInsertSQL, items[0].UpdatedAt, "STARTED", 0 )
+	if( err != nil){
+		log.Println("Failed to update lastSync table STARTED")
+		return
+	}
 	downloadImmichAssets(config,items, dto.Assets.Total)
+	lastSyncUpdateSQL := "UPDATE lastSync SET lastSyncDtm = ?, success = ? , totalSync = ? WHERE lastSyncDtm = ?"
+	_, err = db.Exec(lastSyncUpdateSQL, items[len(items) -1].UpdatedAt, "SUCCESS", len(items), items[0].UpdatedAt)
+	if( err != nil){
+		log.Println("Failed to update lastSync table SUCCESS: ",err)
+		return
+	}
 	if (dto.Assets.NextPage != "") {
 		//items = append(items,
 		getImmichPhotosAssetIds(config, syncDate, dto.Assets.NextPage)
