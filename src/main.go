@@ -57,20 +57,31 @@ type MetaDataResponseDto struct {
 }
 
 var db *sql.DB
+var config Config
+
 
 func main (){
 	//TODO: all the comments below
 	//TODO: Separate functions into Processing
 	
+	var err error
 
-	config, err := getConfigJson()
+	hasExif := exifInstalled()
+
+	if !hasExif {
+		fmt.Println("Please install exiftool on your system")
+		return
+	}
+
+
+	config, err = getConfigJson()
 
 	if(err != nil){
 		log.Println("failed to get config in getImmichPhotos()")
 		return
 	}
 
-	bo, err := verifyConfig(config)
+	bo, err := verifyConfig()
 
 	if(bo ==0 || err != nil){
 		log.Println(err)
@@ -126,7 +137,7 @@ func main (){
 	pageNum :="1"
 	
 	folderExists(config.DownloadLoc)
-	assetIds := getImmichPhotosAssetIds(config,getDate,pageNum)
+	assetIds := getImmichPhotosAssetIds(getDate,pageNum)
 	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
 	_, err = db.Exec(lastSyncInsertSQL, time.Now(), "SUCCESS", -1 )
 		
@@ -141,7 +152,7 @@ func main (){
 
 func getLastSyncDate()(time.Time){
 	var lsDate time.Time
-	lastSyncDateSQL := "SELECT lastSyncDtm from lastSync ORDER BY lastSyncDtm DESC LIMIT 1"
+	lastSyncDateSQL := "SELECT lastSyncDtm from lastSync WHERE success = 'SUCCESS' ORDER BY lastSyncDtm DESC LIMIT 1"
 	err := db.QueryRow(lastSyncDateSQL).Scan(&lsDate)
 	if err 	!= nil {
 		log.Println(err)
@@ -157,7 +168,7 @@ func getLastSyncDate()(time.Time){
 	return lsDate
 }
 
-func downloadImmichAssets(config Config, assets []Item, totalCount int) {
+func downloadImmichAssets(assets []Item, totalCount int) {
 	//need to get the download location
 	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
@@ -182,7 +193,7 @@ func downloadImmichAssets(config Config, assets []Item, totalCount int) {
 				ctx := context.Background()
 				sem.Acquire(ctx,1)
 				defer sem.Release(1)
-		 		downloadAsset(config, a,i,totalCount, &wg)
+		 		downloadAsset(a,i,totalCount, &wg)
 			}()
 		}(assets[i])
 	 }
@@ -193,7 +204,7 @@ func downloadImmichAssets(config Config, assets []Item, totalCount int) {
 	return 
 }
 
-func downloadAsset(config Config, asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
+func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
 	defer wg.Done() //making sure we close the sync
 		
 	fmt.Printf("\rDownloading file number: %d/%d", count, total)
@@ -255,6 +266,10 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 
 	if err != nil {
 		fmt.Println("Could not copy to file: " + filename)
+		errDelete := os.Remove(filename)
+    if errDelete != nil {
+			fmt.Println("Error deleting file: ", errDelete)
+    }
 		failedAssetsSQL := "INSERT into failedAssets(assetId) values (?)"
 		_, err := db.Exec(failedAssetsSQL, asset.Id)
 		if err != nil {
@@ -273,6 +288,20 @@ func downloadAsset(config Config, asset Item, count int, total int, wg *sync.Wai
 		log.Panic(error)
 	}	
 }
+
+func exifInstalled() bool {
+	cmd := exec.Command("exiftool", "-ver")
+    output, err := cmd.Output()
+    if err != nil {
+        fmt.Printf("Error: %v\n", err)
+        return false
+    }
+		if strings.Contains(string(output),"command not food") {
+			return false
+		}
+		return true
+}
+
 
 func updateDate(filename string, dateTaken string) error {//file *os.File, dateTaken string){
 		cmd := exec.Command("exiftool", "-SubSecDateTimeOriginal=" +dateTaken, "-overwrite_original", filename)
@@ -316,7 +345,7 @@ func getConfigJson() (config Config, err error) {
 
 }
 
-func verifyConfig(config Config) (int, error){
+func verifyConfig() (int, error){
 	errStr := "Your config.json is missing the following values: "
 		
 	if (config.ImmichUrl == ""){
@@ -345,7 +374,7 @@ func verifyConfig(config Config) (int, error){
 }
 
 
-func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(l []Item){
+func getImmichPhotosAssetIds(syncDate time.Time, pageNum string)(l []Item){
 
 	body := `
 	{
@@ -405,7 +434,7 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 		log.Println("Failed to update lastSync table STARTED")
 		return
 	}
-	downloadImmichAssets(config,items, dto.Assets.Total)
+	downloadImmichAssets(items, dto.Assets.Total)
 	lastSyncUpdateSQL := "UPDATE lastSync SET lastSyncDtm = ?, success = ? , totalSync = ? WHERE lastSyncDtm = ?"
 	_, err = db.Exec(lastSyncUpdateSQL, items[len(items) -1].UpdatedAt, "SUCCESS", len(items), items[0].UpdatedAt)
 	if( err != nil){
@@ -414,7 +443,7 @@ func getImmichPhotosAssetIds(config Config, syncDate time.Time, pageNum string)(
 	}
 	if (dto.Assets.NextPage != "") {
 		//items = append(items,
-		getImmichPhotosAssetIds(config, syncDate, dto.Assets.NextPage)
+		getImmichPhotosAssetIds(syncDate, dto.Assets.NextPage)
 		//...)
 	} 
 	return items
