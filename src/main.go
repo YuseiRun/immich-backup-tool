@@ -137,17 +137,31 @@ func main (){
 	pageNum :="1"
 	
 	folderExists(config.DownloadLoc)
-	assetIds := getImmichPhotosAssetIds(getDate,pageNum)
+	getImmichPhotosAssetIds(getDate,pageNum)
 	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
 	_, err = db.Exec(lastSyncInsertSQL, time.Now(), "SUCCESS", -1 )
 		
-	fmt.Println(len(assetIds))
-		
+	currentFailedCount := getCurrentFailedAssets()
+	if( currentFailedCount != -1) {
+		fmt.Printf("There are currently %d assets that need to be redownloaded\n", currentFailedCount)
+	}
+
 	//downloadImmichAssets(config,assetIds)
 	log.Println("Downloads Complete!")	
 
 
 
+}
+
+func getCurrentFailedAssets() int {
+	currentFailedCount:=-1 
+	currentFailedToDownloadSQL:="SELECT COUNT (*) from failedAssets WHERE success = 0"
+	
+	err := db.QueryRow(currentFailedToDownloadSQL).Scan(&currentFailedCount)
+	if err != nil {
+		fmt.Println("There was a problem checking the failedAssets tabled.")
+	}
+	return currentFailedCount
 }
 
 func getLastSyncDate()(time.Time){
