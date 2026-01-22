@@ -155,9 +155,15 @@ func main (){
 	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
 	_, err = db.Exec(lastSyncInsertSQL, time.Now(), "SUCCESS", -1 )
 		
-	currentFailedCount := getCurrentFailedAssets()
+	currentFailedAssets := getCurrentFailedAssetIds()
+	currentFailedCount := len(currentFailedAssets)
 	if( currentFailedCount != -1) {
 		fmt.Printf("There are currently %d assets that need to be redownloaded\n", currentFailedCount)
+	}
+	if currentFailedCount > 0 {
+		if len(currentFailedAssets) != 0 {
+			downloadFailedAssets(currentFailedAssets)	
+		}
 	}
 
 	//downloadImmichAssets(config,assetIds)
@@ -166,6 +172,26 @@ func main (){
 
 
 }
+
+func getCurrentFailedAssetIds() []string{
+	failedAssetIdsSQL := "SELECT assetId FROM failedAssets WHERE success = 0"
+	rows, err := db.Query(failedAssetIdsSQL)
+	defer rows.Close()
+	if err != nil {
+		log.Printf("Error during getCurrentFailedAssetIds(): ", err)
+		return []string{}
+	}
+	var failedAssets []string
+	for rows.Next() {
+	    var s string
+	    if err := rows.Scan(&s); err != nil {
+	        return []string{} 
+	    }
+	    failedAssets = append(failedAssets, s)
+	}
+		
+	return failedAssets
+} 
 
 func getApplicationPath() string {
 	_, filename, _, _ := runtime.Caller(0)
@@ -185,17 +211,7 @@ func getApplicationPath() string {
   // Return the substring starting from the second-to-last slash + 1
 	return appDir[:secondToLastSlash]
 
- }
 
-func getCurrentFailedAssets() int {
-	currentFailedCount:=-1 
-	currentFailedToDownloadSQL:="SELECT COUNT (*) from failedAssets WHERE success = 0"
-	
-	err := db.QueryRow(currentFailedToDownloadSQL).Scan(&currentFailedCount)
-	if err != nil {
-		fmt.Println("There was a problem checking the failedAssets tabled.")
-	}
-	return currentFailedCount
 }
 
 func getLastSyncDate()(time.Time){
@@ -236,8 +252,6 @@ func downloadImmichAssets(assets []Item, totalCount int) {
 		
 		go func(a Item){
 			defer func(){ 
-				//<-guard
-				//defer wg.Done()
 				ctx := context.Background()
 				sem.Acquire(ctx,1)
 				defer sem.Release(1)
@@ -252,18 +266,50 @@ func downloadImmichAssets(assets []Item, totalCount int) {
 	return 
 }
 
-func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
-	defer wg.Done() //making sure we close the sync
-		
-	fmt.Printf("\rDownloading file number: %d/%d", count, total)
-	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
+func downloadFailedAssets(assetIds []string ) {
+	var resp *http.Response
+	for _, id := range assetIds {
+
+		resp = downloadAssetResponse(id)
+		filename := config.DownloadLoc+"/previouslyFailed/"+id
+		file, err := os.Create(filename)
+		if err != nil {
+			fmt.Println("Could not create: " + filename)
+			return
+		}
+		defer file.Close()
 	
-	if(fileExists(filename)){
-		//log.Println("\r\nFile exists at: " +filename +"\n")
-		return
-	}	
+		_,err = io.Copy(file, resp.Body)
+
+		if err != nil {
+			fmt.Println("Could not copy to file: " + filename)
+			errDelete := os.Remove(filename)
+	    if errDelete != nil {
+				fmt.Println("Error deleting file: ", errDelete)
+	    }
+		}	else {
+			//updateDate(filename, asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
+			failedAssetsSQL := "INSERT into failedAssets(assetId,success) values (?,?)"
+			_, err := db.Exec(failedAssetsSQL, id, 1)
+			if err != nil {
+				log.Println("Could not record that %s was failed to download", id)
+			}
+
+		}
+	
+
+	}
+	//TODO: need to check if download succeeded,
+	//if so, update the row in the DB
+	defer resp.Body.Close()
+	
+}
+
+func downloadAssetResponse(assetId string) *http.Response{
+	//THIS FUNCTION DOES NOT CLOSE THRE RESPONSE
+
 	//https://api.immich.app/endpoints/assets/downloadAsset
-	immichSearchMetaDataUrl := config.ImmichUrl + "/assets/"+asset.Id+"/original";
+	immichSearchMetaDataUrl := config.ImmichUrl + "/assets/"+assetId+"/original";
 	
 	req, err := http.NewRequest("GET", immichSearchMetaDataUrl, nil)
 	if err != nil {
@@ -282,13 +328,12 @@ func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem 
 	if err != nil {
 		panic(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		log.Println("Response Code:", resp.StatusCode)
-		return
-	}
 
+	return resp
+	
+}
 
+func getAssetFileName(resp *http.Response, filename string,asset Item) string{
 	contentDisposition := resp.Header.Get("Content-Disposition")
 	//filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/fileName-"+time.Now().Format("2006-01-02-15:04:05")+".JPG";
 	re := regexp.MustCompile(`^.*'`)
@@ -299,10 +344,49 @@ func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem 
 		}
 
 	}
+	return filename
+
+}
+
+
+func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
+	defer wg.Done() //making sure we close the sync
+		
+	fmt.Printf("\rDownloading file number: %d/%d", count, total)
+	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
+	if(fileExists(filename)){
+		//log.Println("\r\nFile exists at: " +filename +"\n")
+		return
+	}	
+	
+	resp := downloadAssetResponse(asset.Id)
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		log.Println("Response Code:", resp.StatusCode)
+		return
+	}
+		filename = getAssetFileName(resp,filename,asset)
+		saveAsset(filename, resp, asset)	
 	//TODO: have a log/table of failed to download files. 
 	//want users to know what didnt download, the ability to redownload (auto? leaning towards yes)
 	//remove entries that were succesfully downloaded
+	
+	//TODO: want to check the root location of the DownloadLoc
+	//This so I am not checking the entirity of all of the drives connected
+	//re=regexp.MustCompile('^/([^/]+)')
+	usage, err := disk.Usage("/")// + re.FindStringSubmatch(config.DownloadLoc)[1])
+	if( err != nil){
+		log.Printf("Error occured during disk check: ", err)	
+	}
+	if(usage.UsedPercent > float64(config.MaxDiskUsage) ) {
+		//TODO: investigate why error has !\n(MISSING)
+		error := fmt.Sprintf("TOO MUCH SPACE USED\n Please clean up your disk or increase limit to be > %g%\n\nNow Exiting Program", usage.UsedPercent)
+		log.Panic(error)
+	}	
+}
+
+func saveAsset(filename string, resp *http.Response, asset Item){
 	file, err := os.Create(filename)
 	if err != nil {
 		fmt.Println("Could not create: " + filename)
@@ -326,15 +410,7 @@ func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem 
 	}	else {
 		updateDate(filename, asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
 	}
-	//TODO: want to check the root location of the DownloadLoc
-	//This so I am not checking the entirity of all of the drives connected
-	//re=regexp.MustCompile('^/([^/]+)')
-	usage, err := disk.Usage("/")// + re.FindStringSubmatch(config.DownloadLoc)[1])
-	if(usage.UsedPercent > float64(config.MaxDiskUsage) ) {
-		//TODO: investigate why error has !\n(MISSING)
-		error := fmt.Sprintf("TOO MUCH SPACE USED\n Please clean up your disk or increase limit to be > %g%\n\nNow Exiting Program", usage.UsedPercent)
-		log.Panic(error)
-	}	
+
 }
 
 func exifInstalled() bool {
