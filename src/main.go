@@ -20,7 +20,8 @@ import (
  	"golang.org/x/sync/semaphore"
 	"github.com/shirou/gopsutil/disk"
 	//	"golang.org/x/sys/unix"
-	
+	"path/filepath"
+  "runtime"
 
 	//"github.com/gosuri/uilive"
 )
@@ -88,6 +89,19 @@ func main (){
 		return
 	}
 
+	if config.DownloadLoc == "THIS_LOCATION" {
+		var input string
+		path := getApplicationPath()
+		path += "/immichPhotos"
+		fmt.Printf("Using the current location will add all files in %s\nType [Y] to confirm, anything else will quit the program.",path)
+		fmt.Scanln(&input)
+		if input != "Y" {
+			fmt.Println("Canceling program")
+			return
+		}
+		fmt.Printf("Continuing....")
+	}
+
 	log.Println("started")
 	dbPath :=  "../db";
 	
@@ -152,6 +166,26 @@ func main (){
 
 
 }
+
+func getApplicationPath() string {
+	_, filename, _, _ := runtime.Caller(0)
+  appDir := filepath.Dir(filename)
+
+	lastSlash := strings.LastIndex(appDir, "/")
+  if lastSlash == -1 {
+		return appDir // No slash found, return original string
+  }
+
+  // Find the second-to-last occurrence of '/'
+  secondToLastSlash := strings.LastIndex(appDir[:lastSlash], "/")
+  if secondToLastSlash == -1 {
+      return appDir // Only one slash, return original string
+  }
+
+  // Return the substring starting from the second-to-last slash + 1
+	return appDir[:secondToLastSlash]
+
+ }
 
 func getCurrentFailedAssets() int {
 	currentFailedCount:=-1 
