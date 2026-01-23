@@ -51,6 +51,13 @@ type SearchAssetResponseDto struct {
 	
 }
 
+type FailedAsset struct {
+	assetId  string
+	fileName string
+	fileDate time.Time
+	success  int
+}
+
 
 type MetaDataResponseDto struct {
     Assets    SearchAssetResponseDto `json:"assets"`
@@ -59,7 +66,7 @@ type MetaDataResponseDto struct {
 
 var db *sql.DB
 var config Config
-
+var moreAssetsChar string
 
 func main (){
 	//TODO: all the comments below
@@ -132,6 +139,8 @@ func main (){
 	failedToDownloadTable :=` 
 	CREATE TABLE IF NOT EXISTS failedAssets (
 		assetId VARCHAR(127) NOT NULL,
+		fileName VARCHAR(127) NOT NULL,
+		fileDate Date NOT NULL,
 		success INTEGER NOT NULL DEFAULT 0
 	);
 	`
@@ -155,7 +164,7 @@ func main (){
 	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
 	_, err = db.Exec(lastSyncInsertSQL, time.Now(), "SUCCESS", -1 )
 		
-	currentFailedAssets := getCurrentFailedAssetIds()
+	currentFailedAssets := getCurrentFailedAssets()
 	currentFailedCount := len(currentFailedAssets)
 	if( currentFailedCount != -1) {
 		fmt.Printf("There are currently %d assets that need to be redownloaded\n", currentFailedCount)
@@ -173,24 +182,26 @@ func main (){
 
 }
 
-func getCurrentFailedAssetIds() []string{
-	failedAssetIdsSQL := "SELECT assetId FROM failedAssets WHERE success = 0"
+func getCurrentFailedAssets() []FailedAsset{
+	failedAssetIdsSQL := "SELECT assetId, fileName, fileDate FROM failedAssets WHERE success = 0"
 	rows, err := db.Query(failedAssetIdsSQL)
 	defer rows.Close()
 	if err != nil {
-		log.Printf("Error during getCurrentFailedAssetIds(): ", err)
-		return []string{}
+		log.Printf("Error during getCurrentFailedAssets(): ", err)
+		return []FailedAsset{}
 	}
-	var failedAssets []string
+
+	var fAssets []FailedAsset
+	
 	for rows.Next() {
-	    var s string
-	    if err := rows.Scan(&s); err != nil {
-	        return []string{} 
+	    var fa FailedAsset
+	    if err := rows.Scan(&fa.assetId, &fa.fileName, &fa.fileDate); err != nil {
+	        return fAssets 
 	    }
-	    failedAssets = append(failedAssets, s)
+	    fAssets = append(fAssets, fa)
 	}
 		
-	return failedAssets
+	return fAssets
 } 
 
 func getApplicationPath() string {
@@ -266,12 +277,12 @@ func downloadImmichAssets(assets []Item, totalCount int) {
 	return 
 }
 
-func downloadFailedAssets(assetIds []string ) {
+func downloadFailedAssets(assets []FailedAsset ) {
 	var resp *http.Response
-	for _, id := range assetIds {
+	for _, asset := range assets {
 
-		resp = downloadAssetResponse(id)
-		filename := config.DownloadLoc+"/previouslyFailed/"+id
+		resp = downloadAssetResponse(asset.assetId)
+		filename := asset.fileName//config.DownloadLoc+"/previouslyFailed/"+id
 		file, err := os.Create(filename)
 		if err != nil {
 			fmt.Println("Could not create: " + filename)
@@ -288,11 +299,11 @@ func downloadFailedAssets(assetIds []string ) {
 				fmt.Println("Error deleting file: ", errDelete)
 	    }
 		}	else {
-			//updateDate(filename, asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
-			failedAssetsSQL := "INSERT into failedAssets(assetId,success) values (?,?)"
-			_, err := db.Exec(failedAssetsSQL, id, 1)
+			updateDate(filename, asset.fileDate.Format("2006-01-02T15:04:05.000Z"))
+			failedAssetsSQL := "INSERT into failedAssets(assetId,fileName, fileDate, success) values (?,?,?,?)"
+			_, err := db.Exec(failedAssetsSQL, asset.assetId, filename, asset.fileDate, 1)
 			if err != nil {
-				log.Println("Could not record that %s was failed to download", id)
+				log.Println("Could not record that %s was failed to download", asset.assetId)
 			}
 
 		}
@@ -352,7 +363,7 @@ func getAssetFileName(resp *http.Response, filename string,asset Item) string{
 func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
 	defer wg.Done() //making sure we close the sync
 		
-	fmt.Printf("\rDownloading file number: %d/%d", count, total)
+	fmt.Printf("\rDownloading file number: %d/%d%s", count, total,moreAssetsChar)
 	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
 	if(fileExists(filename)){
@@ -402,8 +413,8 @@ func saveAsset(filename string, resp *http.Response, asset Item){
     if errDelete != nil {
 			fmt.Println("Error deleting file: ", errDelete)
     }
-		failedAssetsSQL := "INSERT into failedAssets(assetId) values (?)"
-		_, err := db.Exec(failedAssetsSQL, asset.Id)
+		failedAssetsSQL := "INSERT into failedAssets(assetId, fileName, fileDate) values (?,?,?)"
+		_, err := db.Exec(failedAssetsSQL, asset.Id,filename,asset.LocalDateTime.Format("2006-01-02T15:04:05.000Z"))
 		if err != nil {
 			log.Println("Could not record that %s was failed to download", asset.Id)
 		}
@@ -567,9 +578,12 @@ func getImmichPhotosAssetIds(syncDate time.Time, pageNum string)(l []Item){
 	}
 	if (dto.Assets.NextPage != "") {
 		//items = append(items,
+		moreAssetsChar = "+"
 		getImmichPhotosAssetIds(syncDate, dto.Assets.NextPage)
 		//...)
-	} 
+	} else{
+		moreAssetsChar = ""
+	}
 	return items
 }
 
