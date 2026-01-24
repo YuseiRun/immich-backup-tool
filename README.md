@@ -1,3 +1,5 @@
+![immich-back-up-tool](./docImg/immichBackUp.png)   
+
 # immich-back-up-tool
 A simple tool to back up Immich via API
 
@@ -23,10 +25,10 @@ The initial run will take a while depending on how many files you have backed up
 1. Add entry to database
 1. Done
 
-> !NOTE
-> You will see 'Downloading file number n/d' when you start to download
+> [!NOTE]
+> You will see 'Downloading file number n/d+' when you start to download
 > If you are downloading more than 250 photos the denominator will be 250 until the last page.
-> This is because the total variable returned from the Immich API does not currently return the total number of assets in the request. I have made a [discussion](https://github.com/immich-app/immich/issues/25325) post and it looks like a fix is in progress.
+> This is because the total variable returned from the Immich API does not currently return the total number of assets in the request. I have made a [discussion](https://github.com/immich-app/immich/issues/25325) post and it looks like they are planning to remove 'total' from the response.
 
 # Combos
  You can combine this tool with something like Syncthing.
