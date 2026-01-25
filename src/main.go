@@ -125,14 +125,16 @@ func main (){
 		var input string
 		path := getApplicationPath()
 		path += "/immichPhotos"
-		fmt.Printf("Using the current location will add all files in %s\nType [Y] to confirm, anything else will quit the program.",path)
+		fmt.Printf("Using the current location will add all files in %s\nType [Y] to confirm, anything else will quit the program.\n",path)
 		fmt.Scanln(&input)
 		if input != "Y" {
 			fmt.Println("Canceling program")
 			return
 		}
 		fmt.Printf("Continuing....")
+		config.DownloadLoc =  path	
 	}
+	
 
 	log.Println("started")
 	dbPath :=  "../db";
