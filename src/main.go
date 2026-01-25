@@ -131,7 +131,7 @@ func main (){
 			fmt.Println("Canceling program")
 			return
 		}
-		fmt.Printf("Continuing....")
+		fmt.Printf("Continuing....\n")
 		config.DownloadLoc =  path	
 	}
 	
@@ -276,7 +276,6 @@ func getSyncDate()(time.Time){
 
 func downloadImmichAssets(assets []Item, totalCount int) {
 	//need to get the download location
-	log.Println(config.DownloadLoc)
 	//create a new folder based on date provided
 	folderExists(config.DownloadLoc)
 	
@@ -597,6 +596,7 @@ func getImmichPhotosAssetIds(syncDate time.Time, pageNum string)(l []Item){
 		log.Println("Failed to update lastSync table STARTED")
 		return
 	}
+	log.Println("Download Location: ",config.DownloadLoc)
 	downloadImmichAssets(items, dto.Assets.Count)
 	lastSyncUpdateSQL := "UPDATE lastSync SET lastSyncDtm = ?, success = ? , totalSync = ? WHERE lastSyncDtm = ?"
 	_, err = db.Exec(lastSyncUpdateSQL, items[len(items) -1].UpdatedAt, "SUCCESS", len(items), items[0].UpdatedAt)
@@ -627,7 +627,7 @@ func fileExists(filePath string) bool{
 		defer file.Close()
 		return false
 	} else { 
-		log.Println("\r\nFile path: '" + filePath + "'exists!\n")
+		log.Println("\r\nFile path: '" + filePath + " 'exists!\n")
 		return true
 	}
 	
