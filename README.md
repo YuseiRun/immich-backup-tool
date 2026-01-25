@@ -8,7 +8,6 @@ Was not made to work with Windows
 # Getting Started
 You will need to install go and exiftool
 You will want to copy the contents of the 'sample-config.json' file to a new file called 'config.json'
-
 Within this new config.json file you will want to supply each value being requested.
 
 > [!NOTE]
@@ -16,7 +15,25 @@ Within this new config.json file you will want to supply each value being reques
 > Changing the location of main.go from immich-back-up-tool/src/main.go will cause the application to behave unintendedly. The logic behind THIS_LOCATION moves two directories up and saves the files there.
 
 
+To run this application, navigate to the 'src' and run the following:
+
+```
+go run main.go
+```
+
+You can also build this application with 
+
+```
+go build main.go
+```
+
+
 # Informational
+this project accepts arguments
+-h prints out the possible arguements
+-d "mm-dd-yyyy" starts the sync at the entered user date
+
+
 The initial run will take a while depending on how many files you have backed up to Immich
 
 ## The initial steps will be as follows
