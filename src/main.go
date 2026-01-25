@@ -52,7 +52,7 @@ type SearchAssetResponseDto struct {
 }
 
 type FailedAsset struct {
-	assetId  string
+	id  string
 	fileName string
 	fileDate time.Time
 	success  int
@@ -67,12 +67,37 @@ type MetaDataResponseDto struct {
 var db *sql.DB
 var config Config
 var moreAssetsChar string
+var startDate time.Time
 
 func main (){
 	//TODO: all the comments below
 	//TODO: Separate functions into Processing
+
+	helpMenu := `
+	-h									"Displays options for help"
+	-d "mm-dd-yyyy"			"New date to start sync from"
+	`
 	
 	var err error
+	args := os.Args
+
+	if len(args)> 1 {
+		if (args[1] == "-h" || args[1] == "-help") {
+			fmt.Printf(helpMenu)
+			return
+		} else if len(args)>2 && args[1] == "-d" {
+			 startDate, err = time.Parse("01-02-2006", args[2])
+			 if	err != nil {
+				 errStr := fmt.Sprintf("The date %s you have entered does not conform to the format mm-dd-yyyy.\nHere is your error %s",args[2],err)
+				 fmt.Println(errStr)
+				 return
+			 }
+		} else {
+			fmt.Println("You have entered args this application does not accept. Here are the acceptable arguments:")
+			fmt.Printf(helpMenu)
+			return
+		}
+	}
 
 	hasExif := exifInstalled()
 
@@ -138,7 +163,7 @@ func main (){
 
 	failedToDownloadTable :=` 
 	CREATE TABLE IF NOT EXISTS failedAssets (
-		assetId VARCHAR(127) NOT NULL,
+		id VARCHAR(127) NOT NULL,
 		fileName VARCHAR(127) NOT NULL,
 		fileDate Date NOT NULL,
 		success INTEGER NOT NULL DEFAULT 0
@@ -153,7 +178,7 @@ func main (){
 	cnxDb(db, failedToDownloadTable, "failedAssets")
 
 	//get newest entry in db date sync
-	getDate := getLastSyncDate()
+	getDate := getSyncDate()
 	//getDate=time.Now()
 	//send last sync date here\
 	//while lastSyncDate<currentDate loop the following
@@ -183,7 +208,7 @@ func main (){
 }
 
 func getCurrentFailedAssets() []FailedAsset{
-	failedAssetIdsSQL := "SELECT assetId, fileName, fileDate FROM failedAssets WHERE success = 0"
+	failedAssetIdsSQL := "SELECT id, fileName, fileDate FROM failedAssets WHERE success = 0"
 	rows, err := db.Query(failedAssetIdsSQL)
 	defer rows.Close()
 	if err != nil {
@@ -195,7 +220,7 @@ func getCurrentFailedAssets() []FailedAsset{
 	
 	for rows.Next() {
 	    var fa FailedAsset
-	    if err := rows.Scan(&fa.assetId, &fa.fileName, &fa.fileDate); err != nil {
+	    if err := rows.Scan(&fa.id, &fa.fileName, &fa.fileDate); err != nil {
 	        return fAssets 
 	    }
 	    fAssets = append(fAssets, fa)
@@ -225,7 +250,11 @@ func getApplicationPath() string {
 
 }
 
-func getLastSyncDate()(time.Time){
+func getSyncDate()(time.Time){
+	if (!startDate.IsZero() ){
+		fmt.Println("Using entered start date")
+		return startDate
+	}
 	var lsDate time.Time
 	lastSyncDateSQL := "SELECT lastSyncDtm from lastSync WHERE success = 'SUCCESS' ORDER BY lastSyncDtm DESC LIMIT 1"
 	err := db.QueryRow(lastSyncDateSQL).Scan(&lsDate)
@@ -281,7 +310,7 @@ func downloadFailedAssets(assets []FailedAsset ) {
 	var resp *http.Response
 	for _, asset := range assets {
 
-		resp = downloadAssetResponse(asset.assetId)
+		resp = downloadAssetResponse(asset.id)
 		filename := asset.fileName//config.DownloadLoc+"/previouslyFailed/"+id
 		file, err := os.Create(filename)
 		if err != nil {
@@ -300,10 +329,10 @@ func downloadFailedAssets(assets []FailedAsset ) {
 	    }
 		}	else {
 			updateDate(filename, asset.fileDate.Format("2006-01-02T15:04:05.000Z"))
-			failedAssetsSQL := "INSERT into failedAssets(assetId,fileName, fileDate, success) values (?,?,?,?)"
-			_, err := db.Exec(failedAssetsSQL, asset.assetId, filename, asset.fileDate, 1)
+			failedAssetsSQL := "INSERT into failedAssets(id,fileName, fileDate, success) values (?,?,?,?)"
+			_, err := db.Exec(failedAssetsSQL, asset.id, filename, asset.fileDate, 1)
 			if err != nil {
-				log.Println("Could not record that %s was failed to download", asset.assetId)
+				log.Println("Could not record that %s was failed to download", asset.id)
 			}
 
 		}
@@ -555,9 +584,6 @@ func getImmichPhotosAssetIds(syncDate time.Time, pageNum string)(l []Item){
 		log.Fatal("Could not contact immich server")
 	}
 
-	//fmt.Println("Total Count: ", dto.Assets.Count)
-	//fmt.Println("Total Assets: ", dto.Assets.Total)
-	//fmt.Println("Nextpage: ",  dto.Assets.NextPage)
 	items := dto.Assets.Items
 
 	if len(items) == 0 {
@@ -569,7 +595,7 @@ func getImmichPhotosAssetIds(syncDate time.Time, pageNum string)(l []Item){
 		log.Println("Failed to update lastSync table STARTED")
 		return
 	}
-	downloadImmichAssets(items, dto.Assets.Total)
+	downloadImmichAssets(items, dto.Assets.Count)
 	lastSyncUpdateSQL := "UPDATE lastSync SET lastSyncDtm = ?, success = ? , totalSync = ? WHERE lastSyncDtm = ?"
 	_, err = db.Exec(lastSyncUpdateSQL, items[len(items) -1].UpdatedAt, "SUCCESS", len(items), items[0].UpdatedAt)
 	if( err != nil){
