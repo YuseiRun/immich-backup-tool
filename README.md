@@ -32,7 +32,7 @@ go build main.go
 this project accepts arguments
 -h prints out the possible arguements
 -d "mm-dd-yyyy" starts the sync at the entered user date
-
+-Y this is for when you want to use THIS_LOCATION without having to confirm. I do not recommend this unless you are certain where the photos will be saved. They will be saved ../../immichPhotos (two folders up from main.go/main in a new folder called immichPhotos). Intended use: for dedicated backup set ups and start up scripts.
 
 The initial run will take a while depending on how many files you have backed up to Immich
 

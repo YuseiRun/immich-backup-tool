@@ -76,8 +76,9 @@ func main (){
 	helpMenu := `
 	-h									"Displays options for help"
 	-d "mm-dd-yyyy"			"New date to start sync from"
+	-Y 									"Accepts THIS_LOCATION without interaction"
 	`
-	
+	permAccept := "n" 
 	var err error
 	args := os.Args
 
@@ -85,6 +86,8 @@ func main (){
 		if (args[1] == "-h" || args[1] == "-help") {
 			fmt.Printf(helpMenu)
 			return
+		} else if args[1] == "-Y" {
+			permAccept = "Y"
 		} else if len(args)>2 && args[1] == "-d" {
 			 startDate, err = time.Parse("01-02-2006", args[2])
 			 if	err != nil {
@@ -121,7 +124,7 @@ func main (){
 		return
 	}
 
-	if config.DownloadLoc == "THIS_LOCATION" {
+	if config.DownloadLoc == "THIS_LOCATION" && permAccept != "Y"{
 		var input string
 		path := getApplicationPath()
 		path += "/immichPhotos"
@@ -133,6 +136,10 @@ func main (){
 		}
 		fmt.Printf("Continuing....\n")
 		config.DownloadLoc =  path	
+	} else if config.DownloadLoc == "THIS_LOCATION" && permAccept == "Y"{
+		path := getApplicationPath()
+		path += "/immichPhotos"
+		config.DownloadLoc = path	
 	}
 	
 
@@ -181,7 +188,6 @@ func main (){
 
 	//get newest entry in db date sync
 	getDate := getSyncDate()
-	//getDate=time.Now()
 	//send last sync date here\
 	//while lastSyncDate<currentDate loop the following
 	pageNum :="1"
