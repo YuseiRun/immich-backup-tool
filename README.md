@@ -72,4 +72,5 @@ Possible drawbacks to options 2, you will be making your Immich server send X ti
 
 ## TODOS:
 1. make the output prettier
-
+1. move functions to separate files
+1. add location data
