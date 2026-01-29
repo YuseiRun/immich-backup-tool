@@ -1,5 +1,3 @@
-module github.com/YuseiRun/immich-backup-tool.git
+module github.com/YuseiRun/immich-backup-tool
 
-go 1.18
-
-require github.com/mattn/go-sqlite3 v1.14.32 // indirect
+go 1.25.6

@@ -1,6 +1,7 @@
 package main
 
 import (
+	//"YuseiRun/immich-backup-tool"
  	_ "github.com/mattn/go-sqlite3"
 	"fmt"
 	"os"
@@ -124,24 +125,21 @@ func main (){
 		return
 	}
 
-	if config.DownloadLoc == "THIS_LOCATION" && permAccept != "Y"{
+	if config.DownloadLoc == "THIS_LOCATION" {
 		var input string
 		path := getApplicationPath()
 		path += "/immichPhotos"
-		fmt.Printf("Using the current location will add all files in %s\nType [Y] to confirm, anything else will quit the program.\n",path)
-		fmt.Scanln(&input)
-		if input != "Y" {
-			fmt.Println("Canceling program")
-			return
+		if permAccept != "Y"{
+			fmt.Printf("Using the current location will add all files in %s\nType [Y] to confirm, anything else will quit the program.\n",path)
+			fmt.Scanln(&input)
+			if input != "Y" {
+				fmt.Println("Canceling program")
+				return
+			}
 		}
 		fmt.Printf("Continuing....\n")
 		config.DownloadLoc =  path	
-	} else if config.DownloadLoc == "THIS_LOCATION" && permAccept == "Y"{
-		path := getApplicationPath()
-		path += "/immichPhotos"
-		config.DownloadLoc = path	
-	}
-	
+	} 
 
 	log.Println("started")
 	dbPath :=  "../db";

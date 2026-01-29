@@ -8,7 +8,6 @@ import (
 
 )
 
-
 func JsonToType[T any](jsonByte[]byte, returnType *T) ( err error){
 	err = json.Unmarshal(jsonByte, returnType)
 	if err != nil{
@@ -28,7 +27,8 @@ func GetConfigJson() (config Config, err error) {
 		return
 	}
 
-	jsonToType(configJson, &config)
-	return 
+	JsonToType(configJson, &config)
+	return config, err 
 
 }
+
