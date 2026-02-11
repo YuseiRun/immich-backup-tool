@@ -78,6 +78,7 @@ func main (){
 	-h									"Displays options for help"
 	-d "mm-dd-yyyy"			"New date to start sync from"
 	-Y 									"Accepts THIS_LOCATION without interaction"
+	--init 							"Initials config"
 	`
 	permAccept := "n" 
 	var err error
@@ -89,6 +90,9 @@ func main (){
 			return
 		} else if args[1] == "-Y" {
 			permAccept = "Y"
+		} else if args[1] == "--init" {
+			//in here we want to grab each 
+			createConfig()
 		} else if len(args)>2 && args[1] == "-d" {
 			 startDate, err = time.Parse("01-02-2006", args[2])
 			 if	err != nil {
@@ -212,6 +216,41 @@ func main (){
 
 
 }
+
+func createConfig() {
+	var immichUrl string
+	var immichApiKey string
+	var downloadLocation string
+	concurrentDownloads := 2
+	maxDiskUsage := 80
+	fmt.Printf("What is your immichUrl (format \"http://{YOUR_IMMICH_URL}:{PORT}/api\"): ")
+	fmt.Scanln(&immichUrl)
+	if !strings.HasSuffix(immichUrl,"/api") {
+		fmt.Printf("your URL does not end in /api, exitings set up")
+		return
+	}
+	fmt.Printf("What is your immichApiKey: ")
+	fmt.Scanln(&immichApiKey)
+	//check length of key
+	fmt.Printf("What is your downloadLocation: ")
+	fmt.Scanln(&downloadLocation)
+	//give option for current location
+
+
+	fmt.Printf("How many concurrentDownloads (for a default of 2, press enter): ")
+	fmt.Scanln(&concurrentDownloads)
+	//check if integer
+
+	fmt.Printf("What is the maxDiskUsage (for a default of 80%, press enter): ")
+	fmt.Scanln(&maxDiskUsage)
+ //check if integer
+	
+
+	
+
+
+}
+
 
 func getCurrentFailedAssets() []FailedAsset{
 	failedAssetIdsSQL := "SELECT id, fileName, fileDate FROM failedAssets WHERE success = 0"
