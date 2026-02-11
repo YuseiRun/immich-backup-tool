@@ -240,7 +240,7 @@ func createConfig() {
 		fmt.Printf("your URL does not end in /api, exitings set up")
 		return
 	}
-	fmt.Printf("What is your immichApiKey: ")
+	fmt.Printf("Paste your immichApiKey (don't be a hero): ")
 	fmt.Scanln(&immichApiKey)
 	//check length of key
 	fmt.Printf("What is your downloadLocation (if you want the folder 2 above main.go type THIS_LOCATION): ")
