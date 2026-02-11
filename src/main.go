@@ -2,7 +2,7 @@ package main
 
 import (
 	//"YuseiRun/immich-backup-tool"
- 	_ "github.com/mattn/go-sqlite3"
+ 	//_ "github.com/mattn/go-sqlite3"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,7 +23,7 @@ import (
 	//	"golang.org/x/sys/unix"
 	"path/filepath"
   "runtime"
-
+	"strconv"
 	//"github.com/gosuri/uilive"
 )
 
@@ -73,12 +73,12 @@ var startDate time.Time
 func main (){
 	//TODO: all the comments below
 	//TODO: Separate functions into Processing
-
 	helpMenu := `
 	-h									"Displays options for help"
 	-d "mm-dd-yyyy"			"New date to start sync from"
 	-Y 									"Accepts THIS_LOCATION without interaction"
-	--init 							"Initials config"
+	--init 							"Initials config (must be ran in the same folder as main.go)"
+	--init --force 	  	"Sets config (must be ran in the same folder as main.go)"
 	`
 	permAccept := "n" 
 	var err error
@@ -91,7 +91,18 @@ func main (){
 		} else if args[1] == "-Y" {
 			permAccept = "Y"
 		} else if args[1] == "--init" {
-			//in here we want to grab each 
+			if(len(args) < 3 ){
+				config, err = getConfigJson()
+				if(err == nil){
+					log.Println("Config exists! If you want to rewrite config.json, use \"--init --force\" when running the application")
+					return
+				}
+			} else {
+				if (args[2] != "--force"){
+					fmt.Printf("Invalid combination of args. Exiting....")
+					return
+				}
+			}	
 			createConfig()
 		} else if len(args)>2 && args[1] == "-d" {
 			 startDate, err = time.Parse("01-02-2006", args[2])
@@ -221,8 +232,8 @@ func createConfig() {
 	var immichUrl string
 	var immichApiKey string
 	var downloadLocation string
-	concurrentDownloads := 2
-	maxDiskUsage := 80
+	concurrentDownloads := "2"
+	maxDiskUsage := "80"
 	fmt.Printf("What is your immichUrl (format \"http://{YOUR_IMMICH_URL}:{PORT}/api\"): ")
 	fmt.Scanln(&immichUrl)
 	if !strings.HasSuffix(immichUrl,"/api") {
@@ -232,19 +243,36 @@ func createConfig() {
 	fmt.Printf("What is your immichApiKey: ")
 	fmt.Scanln(&immichApiKey)
 	//check length of key
-	fmt.Printf("What is your downloadLocation: ")
+	fmt.Printf("What is your downloadLocation (if you want the folder 2 above main.go type THIS_LOCATION): ")
 	fmt.Scanln(&downloadLocation)
 	//give option for current location
-
-
+	
 	fmt.Printf("How many concurrentDownloads (for a default of 2, press enter): ")
 	fmt.Scanln(&concurrentDownloads)
+	
+	if _, err := strconv.Atoi(concurrentDownloads); err != nil {
+		log.Panic("String not a valid integer, exiting...")
+	}
 	//check if integer
-
 	fmt.Printf("What is the maxDiskUsage (for a default of 80%, press enter): ")
 	fmt.Scanln(&maxDiskUsage)
- //check if integer
-	
+	if _, err := strconv.Atoi(maxDiskUsage); err != nil {
+		log.Panic("String not a valid integer, exiting...")
+	}
+ 
+
+	f, err := os.Create("config.json1")
+  if err != nil {
+  	log.Fatal(err)
+  }
+  defer f.Close()
+	fmt.Fprintln(f, "{") 
+	fmt.Fprintln(f, "immichUrl: \"", immichUrl, "\"")
+	fmt.Fprintln(f, "immichApiKey: \"", immichApiKey, "\"")
+	fmt.Fprintln(f, "downloadLocation: \"", downloadLocation, "\"")
+  fmt.Fprintln(f, "concurrentDownloads:", concurrentDownloads)
+  fmt.Fprintln(f, "maxDiskUsage:", maxDiskUsage)
+	fmt.Fprintln(f, "}") 
 
 	
 
