@@ -2,7 +2,7 @@ package main
 
 import (
 	//"YuseiRun/immich-backup-tool"
- 	//_ "github.com/mattn/go-sqlite3"
+ 	_ "github.com/mattn/go-sqlite3"
 	"fmt"
 	"os"
 	"os/exec"
@@ -209,11 +209,13 @@ func main (){
 	getImmichPhotosAssetIds(getDate,pageNum)
 	lastSyncInsertSQL := "INSERT INTO lastSync(lastSyncDtm, success, totalSync) VALUES (?,?,?)"
 	_, err = db.Exec(lastSyncInsertSQL, time.Now(), "SUCCESS", -1 )
-		
+	if err != nil {
+		log.Println(err)
+	}	
 	currentFailedAssets := getCurrentFailedAssets()
 	currentFailedCount := len(currentFailedAssets)
 	if( currentFailedCount != -1) {
-		fmt.Printf("There are currently %d assets that need to be redownloaded\n", currentFailedCount)
+		fmt.Printf("\nThere are currently %d assets that need to be redownloaded\n", currentFailedCount)
 	}
 	if currentFailedCount > 0 {
 		if len(currentFailedAssets) != 0 {
@@ -463,7 +465,9 @@ func getAssetFileName(resp *http.Response, filename string,asset Item) string{
 
 func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem chan struct{}, 
 	defer wg.Done() //making sure we close the sync
-		
+	if(total < 250){
+		moreAssetsChar = ""
+	}	
 	fmt.Printf("\rDownloading file number: %d/%d%s", count, total,moreAssetsChar)
 	filename := config.DownloadLoc+"/"+ asset.LocalDateTime.Format("2006-01-02")+"/"+asset.OriginalFileName;
 	
@@ -667,7 +671,7 @@ func getImmichPhotosAssetIds(syncDate time.Time, pageNum string)(l []Item){
 		log.Println("Failed to update lastSync table STARTED")
 		return
 	}
-	log.Println("Download Location: ",config.DownloadLoc)
+	//log.Println("Download Location: ",config.DownloadLoc)
 	downloadImmichAssets(items, dto.Assets.Count)
 	lastSyncUpdateSQL := "UPDATE lastSync SET lastSyncDtm = ?, success = ? , totalSync = ? WHERE lastSyncDtm = ?"
 	_, err = db.Exec(lastSyncUpdateSQL, items[len(items) -1].UpdatedAt, "SUCCESS", len(items), items[0].UpdatedAt)
@@ -697,8 +701,9 @@ func fileExists(filePath string) bool{
 
 		defer file.Close()
 		return false
-	} else { 
-		log.Println("\r\nFile path: '" + filePath + " 'exists!\n")
+	} else {
+		fmt.Println("\r")
+		log.Println("File path: '" + filePath + " 'exists!")
 		return true
 	}
 	
