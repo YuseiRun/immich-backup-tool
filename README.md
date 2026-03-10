@@ -33,6 +33,9 @@ this project accepts arguments
 -h prints out the possible arguements
 -d "mm-dd-yyyy" starts the sync at the entered user date
 -Y this is for when you want to use THIS_LOCATION without having to confirm. I do not recommend this unless you are certain where the photos will be saved. They will be saved ../../immichPhotos (two folders up from main.go/main in a new folder called immichPhotos). Intended use: for dedicated backup set ups and start up scripts.
+--init this command is to help initialize your config.json. If you do not run \"go run main.go --init\" in the same folder as main.go, this will still create a config.json, but in the INCORRECT folder. Please run in immich-back-up-tool/src
+--init --force Will do the same as \"--init\", but will override any config.json in the targeted folder.
+
 
 The initial run will take a while depending on how many files you have backed up to Immich
 

@@ -491,7 +491,7 @@ func downloadAsset(asset Item, count int, total int, wg *sync.WaitGroup){ //sem 
 	//TODO: want to check the root location of the DownloadLoc
 	//This so I am not checking the entirity of all of the drives connected
 	//re=regexp.MustCompile('^/([^/]+)')
-	usage, err := disk.Usage("/")// + re.FindStringSubmatch(config.DownloadLoc)[1])
+	usage, err := disk.Usage(config.DownloadLoc)// + re.FindStringSubmatch(config.DownloadLoc)[1])
 	if( err != nil){
 		log.Printf("Error occured during disk check: ", err)	
 	}
